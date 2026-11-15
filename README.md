@@ -9,6 +9,7 @@ A self-hosted n8n agent that emails a set of family dinner ideas every day at 10
 ## Table of contents
 
 - [What it does](#what-it-does)
+- [Screenshots](#screenshots)
 - [Example output](#example-output)
 - [Requirements (functional spec)](#requirements-functional-spec)
 - [Architecture](#architecture)
@@ -35,6 +36,16 @@ Every day at 10:15 the agent:
 5. Sends the email via Gmail.
 
 > **Language note:** the code (node names, variables, JSON fields, comments) is in English. The prompt sent to the model and the email are in **Polish on purpose**, because the people using the agent are a Polish family. See [D9](#d9-code-in-english-user-facing-content-in-polish).
+
+## Screenshots
+
+**The workflow in n8n** (7 nodes, one linear flow):
+
+![n8n workflow: Daily 10:15 → Config → Build Prompt → Gemini → Onion Filter → Build Email → Send Email](docs/workflow.png)
+
+**The daily email** (Polish by design, see the example below for a translation). The yellow box marks an onion-free version of a dish that is traditionally made with onion:
+
+![Example email with the first dinner idea](docs/email-example.png)
 
 ## Example output
 
@@ -166,7 +177,10 @@ Node names, variables, JSON fields and comments are in English so the workflow i
 ```
 .
 ├── README.md                          # this document
-└── daily-dinner-ideas.workflow.json   # n8n workflow export (no secrets, recipient is a placeholder)
+├── daily-dinner-ideas.workflow.json   # n8n workflow export (no secrets, recipient is a placeholder)
+└── docs/
+    ├── workflow.png                   # screenshot of the n8n canvas
+    └── email-example.png              # screenshot of a daily email (no addresses visible)
 ```
 
 ## Setup
@@ -233,7 +247,7 @@ All settings live in the `Config` node:
 - [x] Generate Gemini API key and create the n8n credential
 - [x] First end-to-end run and activation
 - [x] Refactor code to English (node names, variables, JSON fields)
-- [ ] Add screenshots: workflow canvas and an example email
+- [x] Add screenshots: workflow canvas and an example email
 - [ ] Observe a few days of output; if one protein dominates (first run: 4/7 poultry), add a rule like "max 2 dishes with the same type of meat"
 - [ ] Error workflow / alert if the run fails entirely
 - [ ] Retry with feedback when fewer than 5 dishes pass the check
@@ -264,3 +278,4 @@ All settings live in the `Config` node:
 - Created the public GitHub repository.
 - Before publishing, refactored the code to English (D9): node names, variables, JSON schema fields and comments; difficulty stored as `easy | medium | demanding` and mapped to Polish labels at render time. Prompt and email stay in Polish. Re-tested locally with mock data, then replaced the production workflow in n8n with the refactored version so the repository matches what runs.
 - Added a translated example output and a repository structure section to the README.
+- Added GitHub topics (`n8n`, `gemini`, `llm`, `ai-agent`, `automation`, `workflow-automation`, `prompt-engineering`) and screenshots of the workflow and an example email (`docs/`).
