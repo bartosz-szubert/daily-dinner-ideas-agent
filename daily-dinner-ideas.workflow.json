@@ -1,0 +1,194 @@
+{
+  "name": "Daily Dinner Ideas",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a1",
+      "name": "Daily 10:15",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AGENT CONFIGURATION - change settings here\nreturn [{\n  json: {\n    recipient: 'YOUR_EMAIL@example.com',   // where the daily email is sent\n    model: 'gemini-3.5-flash',             // Gemini model name (check availability in Google AI Studio)\n    requestedCount: 7,                     // dishes requested from the model (buffer for the onion filter)\n    minimumCount: 5,                       // below this number the email shows a warning\n    servings: 4,                           // servings used for ingredient amounts\n    // case-insensitive fragments that reject a dish (Polish + English onion family)\n    forbiddenPatterns: ['cebul', 'szczypior', 'szalot', 'dymk', 'onion', 'shallot', 'chive']\n  }\n}];\n"
+      },
+      "id": "a2",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\n\n// Today's date in Polish, Europe/Warsaw timezone\nconst now = new Date();\nconst dateLabel = now.toLocaleDateString('pl-PL', {\n  timeZone: 'Europe/Warsaw', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'\n});\n\n// Random \"inspirations of the day\" - variety without storing history (values are Polish, sent to the model)\nconst inspirations = [\n  'makarony', 'kasze', 'ryż', 'ziemniaki', 'zupy', 'dania z piekarnika', 'placki i naleśniki',\n  'ryby', 'drób', 'wieprzowina', 'wołowina', 'mięso mielone', 'jajka', 'dania warzywne',\n  'pierogi i kluski', 'kuchnia włoska', 'polska kuchnia domowa', 'łagodna kuchnia azjatycka',\n  'łagodna kuchnia meksykańska', 'zapiekanki', 'gulasze i potrawki', 'kotlety'\n];\nconst todaysInspirations = [...inspirations].sort(() => Math.random() - 0.5).slice(0, 4);\n\n// System instruction (Polish - the model must answer in Polish)\nconst systemInstruction = `Jesteś doświadczonym kucharzem domowym, który gotuje obiady dla rodziny z dziećmi.\n\nZASADA NADRZĘDNA - ZERO CEBULI:\n- Żaden przepis nie może zawierać cebuli w jakiejkolwiek postaci: surowej, smażonej, prażonej, duszonej, w proszku, jako bazy do smażenia.\n- Wykluczone są też: szczypiorek, szalotka, dymka, cebula w proszku.\n- Por jako warzywo JEST dozwolony. Czosnek jest dozwolony.\n- Śladowe ilości w gotowych produktach (ketchup, mieszanki przypraw) nie mają znaczenia.\n- Jeśli danie tradycyjnie zawiera cebulę, możesz je zaproponować w wersji bez cebuli. Wtedy w polu \"onion_free_note\" napisz krótko, że to danie tradycyjnie robi się z cebulą i czym ją zastąpiono lub dlaczego da się bez niej. W pozostałych daniach to pole zostaw puste.\n- W polach \"ingredients\" i \"steps\" słowo cebula (ani szczypiorek, szalotka, dymka) nie może się pojawić w ogóle, nawet z dopiskiem \"bez\".\n\nPOZOSTAŁE ZASADY:\n- Obiady dla całej rodziny, ale gotowane głównie pod dzieci: łagodne w smaku (bez ostrych przypraw), smaczne, apetyczne i zachęcające do jedzenia.\n- Składniki z typowych domowych zapasów: lodówka, podstawowe warzywa, makaron, ryż, kasze, ziemniaki, jajka, mąka, podstawowe przyprawy. Bez egzotycznych i trudno dostępnych produktów.\n- Zróżnicowany poziom trudności (pole \"difficulty\"): co najmniej 2 dania \"easy\" (szybkie, do 30 minut) i co najmniej 1 danie \"demanding\" (dłuższe przygotowanie).\n- Dania mają się wyraźnie różnić od siebie (różne bazy, różne białka, różne techniki).\n- Ilości składników podawaj na ${cfg.servings} porcje.\n- Kroki przygotowania krótkie i konkretne.\n- Wszystkie teksty pisz po polsku.`;\n\nconst userPrompt = `Dzisiaj jest ${dateLabel}. Zaproponuj dokładnie ${cfg.requestedCount} różnych obiadów.\nDzisiejsze inspiracje (wykorzystaj je w części propozycji, nie musisz we wszystkich): ${todaysInspirations.join(', ')}.`;\n\nconst requestBody = {\n  systemInstruction: { parts: [{ text: systemInstruction }] },\n  contents: [{ role: 'user', parts: [{ text: userPrompt }] }],\n  generationConfig: {\n    temperature: 1.0,\n    maxOutputTokens: 8192,\n    responseMimeType: 'application/json',\n    responseSchema: {\n      type: 'OBJECT',\n      properties: {\n        meals: {\n          type: 'ARRAY',\n          items: {\n            type: 'OBJECT',\n            properties: {\n              name: { type: 'STRING' },\n              description: { type: 'STRING', description: 'Jedno-dwa zdania: czym jest danie i dlaczego dzieci je polubią' },\n              difficulty: { type: 'STRING', enum: ['easy', 'medium', 'demanding'] },\n              time_minutes: { type: 'INTEGER' },\n              ingredients: { type: 'ARRAY', items: { type: 'STRING' } },\n              steps: { type: 'ARRAY', items: { type: 'STRING' } },\n              onion_free_note: { type: 'STRING' }\n            },\n            required: ['name', 'description', 'difficulty', 'time_minutes', 'ingredients', 'steps', 'onion_free_note']\n          }\n        }\n      },\n      required: ['meals']\n    }\n  }\n};\n\nreturn [{ json: { requestBody, dateLabel, inspirations: todaysInspirations } }];\n"
+      },
+      "id": "a3",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $('Config').first().json.model }}:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "a4",
+      "name": "Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst response = $input.first().json;\n\nlet meals = [];\nlet error = null;\n\n// 1. Parse the model response (skip \"thought\" parts of thinking models)\ntry {\n  const parts = response.candidates?.[0]?.content?.parts || [];\n  const text = parts.filter(p => !p.thought).map(p => p.text || '').join('');\n  meals = JSON.parse(text).meals || [];\n} catch (e) {\n  error = 'Nie udało się odczytać odpowiedzi modelu: ' + e.message;   // shown in the email (Polish)\n}\n\n// 2. Deterministic onion filter\nconst forbidden = new RegExp(cfg.forbiddenPatterns.join('|'), 'i');\n// name/description may say \"bez cebuli\" (\"without onion\"); ingredients/steps may not mention onion at all\nconst stripWithoutOnion = s => String(s || '').replace(/bez\\s+(dodatku\\s+)?cebul\\w*/gi, '');\n\nconst accepted = [];\nconst rejected = [];\n\nfor (const meal of meals) {\n  const strictText = [...(meal.ingredients || []), ...(meal.steps || [])].join(' ');\n  const lenientText = stripWithoutOnion(meal.name) + ' ' + stripWithoutOnion(meal.description);\n  if (forbidden.test(strictText) || forbidden.test(lenientText)) {\n    rejected.push(meal.name || '(no name)');\n  } else {\n    accepted.push(meal);\n  }\n}\n\nreturn [{\n  json: {\n    meals: accepted,\n    count: accepted.length,\n    rejected,\n    error,\n    dateLabel: $('Build Prompt').first().json.dateLabel\n  }\n}];\n"
+      },
+      "id": "a5",
+      "name": "Onion Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst data = $input.first().json;\n\nconst escapeHtml = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\n// Difficulty codes -> Polish labels and colours shown in the email\nconst difficulty = {\n  easy:      { label: 'łatwe',               color: '#2e7d32' },\n  medium:    { label: 'średnie',             color: '#ef6c00' },\n  demanding: { label: 'bardziej wymagające', color: '#c62828' }\n};\n\nlet warnings = '';\nif (data.error) {\n  warnings += `<p style=\"background:#ffebee;padding:10px;border-radius:6px;\">⚠️ ${escapeHtml(data.error)}</p>`;\n}\nif (data.count < cfg.minimumCount) {\n  warnings += `<p style=\"background:#fff3e0;padding:10px;border-radius:6px;\">⚠️ Dziś kontrolę przeszło tylko ${data.count} propozycji (minimum to ${cfg.minimumCount}).</p>`;\n}\n\nconst cards = data.meals.map((meal, i) => {\n  const d = difficulty[meal.difficulty] || { label: meal.difficulty, color: '#333' };\n  return `\n  <div style=\"border:1px solid #ddd;border-radius:8px;padding:14px;margin:14px 0;\">\n    <h2 style=\"margin:0 0 6px 0;font-size:18px;\">${i + 1}. ${escapeHtml(meal.name)}</h2>\n    <p style=\"margin:0 0 8px 0;color:#555;\">\n      <span style=\"color:${d.color};font-weight:bold;\">${escapeHtml(d.label)}</span>\n      &nbsp;·&nbsp; ⏱️ ok. ${escapeHtml(meal.time_minutes)} min\n    </p>\n    <p style=\"margin:0 0 8px 0;\">${escapeHtml(meal.description)}</p>\n    ${meal.onion_free_note ? `<p style=\"background:#fff8e1;padding:8px;border-radius:6px;margin:0 0 8px 0;\">🧅🚫 <b>Wersja bez cebuli:</b> ${escapeHtml(meal.onion_free_note)}</p>` : ''}\n    <p style=\"margin:8px 0 4px 0;\"><b>Składniki (${cfg.servings} porcje):</b></p>\n    <ul style=\"margin:0;\">${(meal.ingredients || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>\n    <p style=\"margin:8px 0 4px 0;\"><b>Przygotowanie:</b></p>\n    <ol style=\"margin:0;\">${(meal.steps || []).map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol>\n  </div>`;\n}).join('');\n\nconst html = `\n<div style=\"font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#222;\">\n  <h1 style=\"font-size:22px;\">🍽️ Propozycje obiadów · ${escapeHtml(data.dateLabel)}</h1>\n  ${warnings}\n  ${cards}\n  <p style=\"color:#999;font-size:12px;\">Wygenerowane automatycznie przez agenta n8n · model: ${escapeHtml(cfg.model)}${data.rejected.length ? ' · odrzucone przez kontrolę cebuli: ' + data.rejected.length : ''}</p>\n</div>`;\n\nreturn [{ json: { subject: `🍽️ Propozycje obiadów · ${data.dateLabel}`, html } }];\n"
+      },
+      "id": "a6",
+      "name": "Build Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a7",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1320,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Daily 10:15": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini": {
+      "main": [
+        [
+          {
+            "node": "Onion Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onion Filter": {
+      "main": [
+        [
+          {
+            "node": "Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw"
+  },
+  "pinData": {}
+}
