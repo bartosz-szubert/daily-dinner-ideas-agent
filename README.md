@@ -2,7 +2,7 @@
 
 A self-hosted n8n agent that emails a set of family dinner ideas every day at 10:15 (Europe/Warsaw). The meals are aimed mainly at children, use ingredients usually already at home, vary in difficulty, and follow one non-negotiable rule: **no onion in any form**.
 
-> **Status:** 🟢 Active since 2026-11-15, running daily at 10:15 (Europe/Warsaw) on `gemini-3.5-flash`. End-to-end test passed (7/7 dishes passed the onion check, email delivered); scheduled runs deliver on their own.
+> **Status:** 🟢 Active since 2026-11-14, running daily at 10:15 (Europe/Warsaw) on `gemini-3.5-flash`. End-to-end test passed (7/7 dishes passed the onion check, email delivered); the first scheduled run on 2026-11-15 delivered on its own.
 
 ---
 
@@ -14,6 +14,7 @@ A self-hosted n8n agent that emails a set of family dinner ideas every day at 10
 - [Requirements (functional spec)](#requirements-functional-spec)
 - [Architecture](#architecture)
 - [Design decisions](#design-decisions)
+- [What went wrong](#what-went-wrong)
 - [Repository structure](#repository-structure)
 - [Setup](#setup)
 - [Configuration](#configuration)
@@ -22,6 +23,7 @@ A self-hosted n8n agent that emails a set of family dinner ideas every day at 10
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap)
 - [Changelog / working log](#changelog--working-log)
+- [Related agents](#related-agents)
 
 ---
 
@@ -164,13 +166,21 @@ No history file for now (occasional repeats are acceptable). Instead, the prompt
 `responseMimeType: application/json` + `responseSchema` (with an enum for difficulty) makes parsing reliable and keeps the email layout stable.
 
 ### D7. Fail visible, not silent
-If the model's answer cannot be parsed, the workflow still sends an email with a clear warning instead of failing silently. If fewer than 5 dishes pass the check, the email says so.
+If the model's answer cannot be parsed, the workflow still sends an email with a clear warning instead of failing silently. If fewer than 5 dishes pass the check, the email says so. This applies only when Gemini answers. If the request itself still fails after three retries, the run stops and no email goes out (see [Known limitations](#known-limitations)).
 
 ### D8. Timezone set explicitly
 `Europe/Warsaw` is set in the workflow settings, never left as the server default, so 10:15 stays 10:15 across DST changes.
 
 ### D9. Code in English, user-facing content in Polish
 Node names, variables, JSON fields and comments are in English so the workflow is readable for anyone reviewing it. The model prompt and the email stay in Polish because the target users are a Polish family. Difficulty is stored as a neutral code (`easy | medium | demanding`) and translated only at render time, which keeps logic and presentation separate. The repository file matches the workflow that actually runs in production.
+
+## What went wrong
+
+- **The first model was gone.** `gemini-2.5-flash` returned 404: it is no longer offered to new API users.
+- **The next one was too slow.** `gemini-3.8-flash` kept the connection open for about 2.5 minutes and hit the 120 s timeout, most likely because of long "thinking" on 7 full recipes. `gemini-3.5-flash` works and is fast enough. The model name now lives in one place (`Config`), so the next change is one line.
+- **The subscription had no API key.** The Google AI Pro subscription gives no API key, only Cloud credits that need a billing account. The agent runs on a free-tier key from Google AI Studio instead.
+- **A wrong assumption about data.** The early assumption was that free-tier prompts are used for training. For users in the EEA, the paid-services data terms also cover the free quota.
+- **The published code had to match production.** The first working version used Polish node names and fields. Before publishing, the code was refactored to English, tested again with mock data and swapped into n8n in place of the running workflow, so this repository is the version that actually runs.
 
 ## Repository structure
 
@@ -239,6 +249,7 @@ All settings live in the `Config` node:
 
 - Keyword filtering cannot catch every possible phrasing (e.g. an unusual dialect word). The prompt rule is the first line of defence, the filter the second.
 - No retry loop when too few dishes pass the check: the email is still sent, with a warning.
+- If the Gemini request fails after three retries, the run stops and no email is sent. There is no error workflow or alert yet (see Roadmap).
 - No memory of previous days, so repeats are possible.
 - Free-tier limits and available model names change quickly; the model is configurable in one place.
 
@@ -279,3 +290,11 @@ All settings live in the `Config` node:
 - Before publishing, refactored the code to English (D9): node names, variables, JSON schema fields and comments; difficulty stored as `easy | medium | demanding` and mapped to Polish labels at render time. Prompt and email stay in Polish. Re-tested locally with mock data, then replaced the production workflow in n8n with the refactored version so the repository matches what runs.
 - Added a translated example output and a repository structure section to the README.
 - Added GitHub topics (`n8n`, `gemini`, `llm`, `ai-agent`, `automation`, `workflow-automation`, `prompt-engineering`) and screenshots of the workflow and an example email (`docs/`).
+
+## Related agents
+
+Other n8n agents from the same setup:
+
+- [motogp-calendar-monitor](https://github.com/bartosz-szubert/motogp-calendar-monitor): watches the MotoGP calendar for changes
+- [ai-act-monitor](https://github.com/bartosz-szubert/ai-act-monitor): tracks updates to the EU AI Act
+- [human-gated-agent](https://github.com/bartosz-szubert/human-gated-agent): a pattern where nothing is published until a human approves it
